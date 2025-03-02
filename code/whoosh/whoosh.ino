@@ -76,7 +76,7 @@
 // Other Pin Definitions
 #define PRESSURE_PIN A0
 #define HALL_0 A1
-#define HALL_1 A2
+// #define HALL_1 A2
 
 #define NODE_ADDRESS 0x08 // for 
 /*
@@ -112,7 +112,7 @@ bool hasError = false; //if this is true, stop the stepper! will report back via
 bool direction = false; //the direction of the stepper
 
 bool hall0Triggered = false;
-bool hall1Triggered = false;
+// bool hall1Triggered = false;
 
 enum PressureState {
   PRESSURE_EXTREME,
@@ -194,10 +194,8 @@ void requestI2CEvent() {
 
 void checkForHallTrigger() {
   int hall0 = analogRead(HALL_0);
-  int hall1 = analogRead(HALL_1);
 
   hall0Triggered = (hall0 > 800 || hall0 < 400);
-  hall1Triggered = (hall1 > 800 || hall1 < 400);
 }
 
 void checkPressureSensor() {
@@ -228,7 +226,7 @@ void setup() {
   initStepperDriver();
   initPressureSensor();
 
-  // calibrate();
+  calibrate();
 }
 
 void setSpeedToMatchPressure() {
@@ -249,139 +247,81 @@ void setSpeedToMatchPressure() {
 }
 
 void loop() {
+  if (hasError){
+    return;
+  }
+
   driver.shaft(direction);
 
  
-  checkForHallTrigger();
+  // checkForHallTrigger();
   checkPressureSensor();
   setSpeedToMatchPressure();
 
  
 
-  if (hall0Triggered && direction == false) {
- 
-      stepper.stop();
-      while (stepper.isRunning()) {
-        stepper.run();
-        // delayMicroseconds(1);
-      }
-      Serial.println("Hall effect 0 triggered. Stepper Stopped. Reversing!");
-      direction = true;
-      stepper.move(MAX_DISTANCE);
-  } else if (hall1Triggered && direction == true) {
-      stepper.stop();
-      while (stepper.isRunning()) {
-        stepper.run();
-        // delayMicroseconds(1);
-      }
-      Serial.println("Hall effect 1 triggered. Stepper Stopped. Reversing!");
-      direction = false;
-      stepper.move(MAX_DISTANCE);
-  } else if(stepper.distanceToGo() == 0) {
+  if(stepper.distanceToGo() == 0) {
     direction = !direction;
 
 
     stepper.move(MAX_DISTANCE);
-    // Serial.println("tryina!");
     
   }
-  
-  Serial.print("acceleration");
-  Serial.println(stepper.acceleration());
+
 
   stepper.run();
 }
 
 
 
-// Stepper Movement Functions
 void calibrate() {
   const int calibrationStepDelay = 10;
-  // Run in any direction until the first hall effect is reached
-  // Once reached, set direction toward the other hall effect sensor
-  // Which hall effect is reached will tell us which direction to go in
+  // run until the hall effect sensor is triggered
+  // if not triggered, hang and fail and write to serial
+  // eventually write a failure to i2c
+  
+  const int MAX_CALIBRATION_DISTANCE = 800; //never exceed this, it's unreasonable. throw if it exceeds.
 
-  // *** NOTE ***
-  // it is possible to reach a hall effect sensor at t=0 !
-
-  const int MAX_CALIBRATION_DISTANCE = 200; //never exceed this, it's unreasonable. throw if it exceeds.
-
-
-  Serial.println("Starting Stepper Calibration...");
-
-
-  bool done = false;
-
+  Serial.println("Starting Calibration...");
+  
   driver.shaft(direction);
 
+  stepper.setMaxSpeed(100);
   stepper.move(MAX_CALIBRATION_DISTANCE);
 
+  Serial.println("Calibration running!");
 
+  bool done = false;
   while(!done){
     checkForHallTrigger();
+  
+    if(!hall0Triggered){
+      
+      if(stepper.distanceToGo() == 0){
+        Serial.println("ERROR:ran out of calibration distance!");
 
-      //TEMP
-    stepper.setAcceleration(10000);
+        hasError = true;
+        done = true;
 
-
-
-    if(!hall0Triggered && !hall1Triggered){
-      stepper.run(); 
-    } else {
-      //set the direction var 
-      //but don't set the direction in the driver!
-      //we're doing this because what if it overruns the hall effect sensor
-
-      if(hall0Triggered){
-        direction = false;
       } else {
-        direction = true;
+        stepper.run(); 
       }
+      
+    } else {
 
-      stepper.setAcceleration(10000);
-      stepper.stop();
-      while (stepper.isRunning()) {
-        stepper.run();
-      }
-      Serial.println("Hall effect triggered. Stepper Stopped.");
+      Serial.println("hall triggered!");
       done = true;
-      stepper.setAcceleration(DEFAULT_MAX_ACCELERATION);
-    }
+      
+      stepper.stop();
+      stepper.setMaxSpeed(DEFAULT_MAX_VELOCITY);
 
+      Serial.println("calibration complete.");
+
+      //todo: do something with the direction here... prolly needs to reverse!
+
+    }
   }
 
 }
-
-
-
-  // const int MAX_CALIB_STEPS = 200000;
-  // for (uint16_t step = 0; step < MAX_CALIB_STEPS; step++) {
-  //   int hallValue = checkForHallTrigger();
-
-  //   if(hallValue == -1) {
-  //     driver.shaft(direction);
-  //     STEP_PORT |= (1 << STEP_PIN);
-  //     // digitalWrite(STEP_PIN, HIGH);
-  //     delayMicroseconds(calibrationStepDelay);
-  //     STEP_PORT &= ~(1 << STEP_PIN);
-  //     // digitalWrite(STEP_PIN, LOW);
-  //   } else {
-  //     Serial.println("Hall effect stop reached. Slowing and reversing direction bool.");
-  //     //slow the stepper to a stop.
-  //     //CODE
-
-  //     //reverse the direction
-  //     direction = !direction;
-
-  //     step = MAX_CALIB_STEPS;
-  //     break;
-
-  //   }
-
-  // }
-
-  //don't forget to check for i2c stop event
-
-
 
 
