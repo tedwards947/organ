@@ -92,19 +92,15 @@ AccelStepper stepper = AccelStepper(stepper.DRIVER, STEP_PIN, DIR_PIN);
 
 // Global Constants
 const int MAX_DISTANCE = 600; //todo: correct to the actual measured value
-const int MAX_PRESSURE = 1000;
 const int DEFAULT_MAX_VELOCITY = 1500; //todo: correct to a reasonable value
-const int DEFAULT_MAX_ACCELERATION = 2500;//2500;
+const int DEFAULT_MAX_ACCELERATION = 2500;
 
-//various velocities depending on pressure state
-// const int VELOCITY_EXTREME = 0;
-// const int VELOCITY_HIGH = 100;
-// const int VELOCITY_NORMAL = 200;
-// const int VELOCITY_LOW = 400;
-const int VELOCITY_EXTREME = 0;
-const int VELOCITY_HIGH = 500;
-const int VELOCITY_NORMAL = 2000;
-const int VELOCITY_LOW = 4000;
+
+const int MAX_PRESSURE = 130;
+const int MIN_PRESSURE = 0;
+const int MAX_SPEED = 3000;
+const int MIN_SPEED = 0;
+
 
 // Global Variables
 bool allStop = false; //if this is set, stop the stepper!
@@ -154,7 +150,7 @@ void initStepperDriver() {
   Serial.println("Setting up driver classes...");
 
   driver.begin();             
-  driver.rms_current(2200);    
+  driver.rms_current(2500);    
 
   driver.en_pwm_mode(1);     
   driver.pwm_autoscale(1);
@@ -198,23 +194,7 @@ void checkForHallTrigger() {
   hall0Triggered = (hall0 > 800 || hall0 < 400);
 }
 
-void checkPressureSensor() {
-  const int EXTREME_THRESHOLD = 1000;
-  const int HIGH_THRESHOLD = 600;
-  const int LOW_THRESHOLD = 300;
 
-  int pressure = analogRead(PRESSURE_PIN);
-
-  if(pressure < LOW_THRESHOLD){
-    currentPressureState = PRESSURE_LOW;
-  }else if (pressure > EXTREME_THRESHOLD) {
-    currentPressureState = PRESSURE_EXTREME;
-  } else if(pressure > HIGH_THRESHOLD){
-    currentPressureState = PRESSURE_HIGH;
-  } else {
-    currentPressureState = PRESSURE_NORMAL;
-  }
-}
 
 void setup() {
   Serial.begin(115200);
@@ -229,21 +209,31 @@ void setup() {
   calibrate();
 }
 
+
+int globalPressure;
+void checkPressureSensor() {
+   globalPressure = analogRead(PRESSURE_PIN);
+}
+
+float lastSetSpeed = 0; // Store the last speed we actually set
 void setSpeedToMatchPressure() {
-  switch (currentPressureState) {
-    case PRESSURE_LOW:
-      stepper.setMaxSpeed(VELOCITY_LOW);
-    break;
-    case PRESSURE_NORMAL:
-      stepper.setMaxSpeed(VELOCITY_NORMAL);
-    break;
-    case PRESSURE_HIGH:
-      stepper.setMaxSpeed(VELOCITY_HIGH);
-    break;
-    case PRESSURE_EXTREME:
-      stepper.setMaxSpeed(VELOCITY_EXTREME);
-    break;
-  }
+
+  const int SPEED_THRESHOLD = 1; 
+
+  int currentPressure = constrain(globalPressure, MIN_PRESSURE, MAX_PRESSURE);
+  // Map the pressure to speed (note the inverse relationship)
+  // As pressure increases, speed decreases
+  float newSpeed = map(currentPressure, MIN_PRESSURE, MAX_PRESSURE, MAX_SPEED, MIN_SPEED);
+  
+  // Calculate absolute difference between new speed and last set speed
+  // float speedDifference = abs(newSpeed - lastSetSpeed);
+  
+  // Only update speed if it's the first time (lastSetSpeed == 0) or 
+  // if the absolute difference exceeds our threshold
+  // if (lastSetSpeed == 0 || speedDifference > SPEED_THRESHOLD) {
+    stepper.setMaxSpeed(newSpeed);
+    // lastSetSpeed = newSpeed; // Update the last set speed
+  // }
 }
 
 void loop() {
@@ -253,8 +243,6 @@ void loop() {
 
   driver.shaft(direction);
 
- 
-  // checkForHallTrigger();
   checkPressureSensor();
   setSpeedToMatchPressure();
 
@@ -262,10 +250,7 @@ void loop() {
 
   if(stepper.distanceToGo() == 0) {
     direction = !direction;
-
-
     stepper.move(MAX_DISTANCE);
-    
   }
 
 
@@ -323,5 +308,4 @@ void calibrate() {
   }
 
 }
-
 
